@@ -1,0 +1,363 @@
+---
+title: "Linear Regression Analysis of World Happiness Scores"
+author: "Manoj Munaganuru"
+date: "4/21/2021"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+# Aim:
+To model happiness scores in every country during the year of 2020 based on several predictors using regression techniques learnt in STAT 512.
+
+# Motivation:
+I believe that this study and the involved research questions could be helpful to the following groups.
+1. National Policymakers: They can use this study to understand what factors would help their constituents and their fellow citizens become more happy. 
+2. Business Investors: My study could be useful for them because multinational businesses like to put their businesses in more happy places as the more happy a place is, the more likely a business will get customers. This is especially true for businesses in the hospitality and leisure sectors.
+3. Vagabonds: International travelers who move to many different countries are becoming more abundant. They could use this study in order to learn what other happy countries they can go to so they can embrace the happiness in the country. 
+
+## Background
+Happiness may seem like a basic word but the effects of happiness can reverberate through all aspects of your life. With the effect that happiness has on stress, relationships, life expectancy, and health, we should not underestimate its importance. However, it is difficult to understand the most important factors that increases happiness in certain nations while leaving other nations relatively unhappy. Unhappiness is known to be at the center of different injustices like discrimination based on religion or social/political/economic affiliation which shows that the impact of unhappiness can be devestating to a nation. The only way to combat unhappiness is to improve the factors the result in greater happiness/prosperity for a nation.
+
+The goal of this research is to understand which factors are important in evaluating the happiness of a nation, especially economic factors. These factors include $ln(GDP.per.capita)$, social support, healthy life expectancy, freedom to make life choices, generosity, and perception of corruption. The significance of a factor could be important in improving happiness in a certain nation. It can also be useful to understand how a government can enact substantial policies to improve the happiness of a nation. 
+
+## Research Questions:
+1. What predictor is the most important in predicting the mean response of Happiness score? Run diagnostics on the model to ensure no violations.
+
+2. Which predictors in a multiple regression model without interaction terms can help predict the mean response of Happiness Score? Run the relevant diagnostics and perform cross validation.
+
+## Variables
+![Description of all variables](/Users/manoj9980/Downloads/variable_table.png)
+
+```{r}
+myDF = read.csv("/Users/manoj9980/Downloads/WHR20_Data.csv")
+myDF = myDF[,c(1:3, 7:12)]
+myDF$Score = myDF$Ladder.score
+myDF = myDF[,c(1,2,4:10)]
+myDF = myDF[,c(1, 2, 9, 3:8)]
+dim(myDF)
+```
+This dataset has 153 rows and 9 columns. The data came from the World Happiness Report for the year 2020 and includes the above predictors/response variable. I believe it would be best to train the model on the full data rather than having a train-test data split due to the limited number of observations. 
+
+# Methods
+## Preprocessing:
+1. isWesternEurope: Empirically speaking, Western Europe is thought to be a region of the world with a very high level of happiness due to financial support provided as well as personal freedoms alotted. This implies that observing whether a country is or isn't in Western Europe could be a significant categorical predictor for happiness. As such, I want to make a categorical predictor called "isWesternEurope" where if the country's region is in Western Europe, the predictor value will be 1, else it is 0. 
+```{r}
+myDF$isWesternEurope[myDF$Regional.indicator == "Western Europe"] = 1
+myDF$isWesternEurope[myDF$Regional.indicator != "Western Europe"] = 0
+myDF
+```
+
+```{r}
+summary(myDF)
+```
+
+```{r}
+sum(is.na(myDF))
+dim(myDF)
+```
+There was no observation above that had a NA value which means 9 columns and 153 rows. 
+
+# Preliminary Analysis:
+I will do some preliminary analysis of this data in the form of scatter plots, correlation heat map, correlation matrix, histograms, and boxplots.
+
+## Scatter Plots:
+```{r}
+pairs(myDF[c(3:10)])
+```
+
+## Correlation Matrix:
+```{r}
+library(reshape2)
+library(ggplot2)
+cor_mat = cor(myDF[c(3:10)])
+cor_mat
+```
+
+## Correlation Heat Map:
+I also wanted to visualize the above correlation matrix in a more visually aesthetic manner using a heatmap.
+```{r}
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+upper_tri = get_upper_tri(cor_mat)
+melted_cor_mat = melt(upper_tri)
+ggplot(data = melted_cor_mat, aes(x=Var1, y=Var2, fill=value)) + geom_tile() + scale_fill_gradient2(low="blue", high="red", mid = "white", limit = c(-1,1)) + theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 8, hjust = 1)) + theme(axis.text.y = element_text(vjust = 1, size = 8)) + coord_fixed()
+```
+
+## Histograms:
+```{r}
+hist(myDF$Score, main = "Histogram of Happiness Score")
+par(mfrow=c(3,2))
+hist(myDF$Logged.GDP.per.capita, main = "Histogram of Logged GDP per Capita")
+hist(myDF$Social.support, main = "Histogram of Social Support")
+hist(myDF$Healthy.life.expectancy, main = "Histogram of Healthy Life Expectancy")
+hist(myDF$Freedom.to.make.life.choices, main = "Histogram of Freedom to make Life Choices")
+hist(myDF$Generosity, main = "Histogram of Generosity")
+hist(myDF$Perceptions.of.corruption, main = "Histogram of Perceptions of Corruption")
+```
+
+## Boxplots
+```{r}
+boxplot(myDF$Score[myDF$isWesternEurope==0], myDF$Score[myDF$isWesternEurope==1], names = c("Not Western Europe", "Western Europe"), main="Happiness Scores Across all Countries in UN", ylab = "Happiness Score")
+boxplot(myDF$Logged.GDP.per.capita[myDF$isWesternEurope==0], myDF$Logged.GDP.per.capita[myDF$isWesternEurope==1], names = c("Not Western Europe", "Western Europe"), main="GDP per Capita Across all Countries in UN", ylab = "GDP per Capita")
+boxplot(myDF$Social.support[myDF$isWesternEurope==0], myDF$Social.support[myDF$isWesternEurope==1], names = c("Not Western Europe", "Western Europe"), main="Happiness Scores Across all Countries in UN", ylab = "Happiness Score")
+boxplot(myDF$Healthy.life.expectancy[myDF$isWesternEurope==0], myDF$Healthy.life.expectancy[myDF$isWesternEurope==1], names = c("Not Western Europe", "Western Europe"), main="Healthy Life Expectancy Across all Countries in UN", ylab = "Healthy Life Expectancy")
+boxplot(myDF$Freedom.to.make.life.choices[myDF$isWesternEurope==0], myDF$Freedom.to.make.life.choices[myDF$isWesternEurope==1],names = c("Not Western Europe", "Western Europe"), main="Freedom to make Life Choices Across all Countries in UN", ylab = "Freedom to make Life Choices")
+boxplot(myDF$Generosity[myDF$isWesternEurope==0], myDF$Generosity[myDF$isWesternEurope==1], names = c("Not Western Europe", "Western Europe"), main="Generosity Across all Countries in UN", ylab = "Generosity")
+boxplot(myDF$Perceptions.of.corruption[myDF$isWesternEurope==0], myDF$Perceptions.of.corruption[myDF$isWesternEurope==1], names = c("Not Western Europe", "Western Europe"), main="Perception of Corruption Across all Countries in UN", ylab = "Perception of Corruption")
+```
+## Insights from the previous plots/tables:
+1. From the scatter plot matrix, there seems to be a non-linear relationship between Y & $X_5$ and Y & $X_6$.
+2. The scatter plots suggest there is a level of multicollinearity between a few predictors including but not limited to $X_1$ & $X_2$, $X_1$ & $X_3$, and $X_2$ & $X_3$. However, it is not clear how much the multicollinearity would negatively impact an MLR model.
+3. Based on the histograms, most predictors have a bellshaped curve but may be slightly skewed to some direction. An exception to this includes $X_4$ and $Y$ which seem to be more bimodal. This implies that the normality assumption for the residuals may be violated creating a necessity for transformations.
+4. The boxplots show the significance of the $X_7$ due to difference in distributions of the other predictors/response that we can see in the boxplots. 
+With some more insights into the data at hand, we can finally begin to build models in order to answer our research questions.
+5.
+
+# Model Building:
+## 1. What predictor is the most important in predicting the mean response of Happiness score? Run diagnostics on the model to ensure no violations.
+To answer this research question, I will be taking a look at the preliminary analysis to see which variables seem to have the strongest correlation with happiness score. Based on the scatterplots and correlation matrix/heatmap, $X_1$, $X_2$, $X_3$, and $X_4$ seem to have the largest unique effect on the response variable. As such, those will be the variables that I will research using their linear models. 
+
+```{r}
+summary(lm("Score ~ Logged.GDP.per.capita", data=myDF))
+```
+```{r}
+summary(lm("Score ~ Healthy.life.expectancy", data=myDF))
+```
+
+```{r}
+summary(lm("Score ~ Social.support", data=myDF))
+```
+
+```{r}
+summary(lm("Score ~ Freedom.to.make.life.choices", data=myDF))
+```
+Based on the summary of the models where the happiness score was regressed against the aforementioned variables, I found that all the variables except for $X_4$ had a significant relationship with $Y$. $X_1$ explains the most variance in happiness score with an $R_{adj}^2$ of 59.86%. Thus, I can define my hypotheses as...
+
+$H_0: \beta_1 = 0$
+$H_A: \beta_1 \neq 0$
+Based on the linear model summary for $y\sim\beta_1X_1+\beta_0+\epsilon_i$, the p-value is $2.2\times10^{-16}$ so we reject the null hypothesis and say that $\beta_1$ is significantly different than 0.
+
+However, I still need to run diagnostics to check assumptions like (lack of) fit as well as non-constant residual variances and non-normal residuals. We will check lack of fit by using the boxplot of the predictor as well as running a lack of fit test. For testing non-constant residual variances, I will look at a residual plot vs. the predictor and perform a Brown-Forsythe Test for heteroscedasticity. In addition, to test for non-normal residuals, I will look at a QQ-Plot and perform a Shapiro-Wilk Normality Test. 
+
+### Does the model have a lack of fit?
+$H_O: Y_{ij} = \beta_0 + \beta_1\cdot X_1 + \epsilon_{ij}$ 
+$H_A: Y_{ij} = \mu_j+\epsilon_{ij}$ 
+```{r}
+boxplot(myDF$Logged.GDP.per.capita, ylab = "logged GDP per capita")
+summary(lm("Score ~ Logged.GDP.per.capita", data=myDF))
+anova(lm("Score ~ Logged.GDP.per.capita", data=myDF), lm("Score ~ as.factor(Logged.GDP.per.capita)", data=myDF))
+```
+We see there are no outliers in $X_1$, so there aren't any points on the high end that could influence the parameter estimates. After running the lack of fit test, we find that at $\alpha = 0.05$, we can say with 95% confidence that there is no lack of fit in the linear model that uses $X_1$ as a predictor variable for $Y$.
+
+### Are their non-constant variances?
+```{r}
+library(onewaytests)
+plot(myDF$Logged.GDP.per.capita, residuals(lm("Score ~ Logged.GDP.per.capita", data=myDF)), main = "Residual Plot")
+abline(h=0)
+myDF$group = cut(myDF$Logged.GDP.per.capita, 3)
+myDF$resid = residuals(lm("Score ~ Logged.GDP.per.capita", data=myDF)) 
+bf.test(resid~group, myDF)
+```
+Based on the above residual plot, there seems to be no pattern for the model residuals vs. $X_1$. This is confirmed by a Brown-Forsythe Test, where we fail to reject the null hypothesis at $\alpha = 0.05$ and say with 95% confidence that the residuals have a constant variance.
+
+### Do the residuals follow a normal distribution
+```{r}
+qqnorm(residuals(lm("Score ~ Logged.GDP.per.capita", data=myDF)), pch = 1, frame = FALSE)
+qqline(residuals(lm("Score ~ Logged.GDP.per.capita", data=myDF)), col = "steelblue", lwd = 2)
+
+shapiro.test(residuals(lm("Score ~ Logged.GDP.per.capita", data=myDF)))
+```
+Based on the above QQ-plot, it seems that the residuals are somewhat normally distributed. After performing a Shapiro-Wilk test, we fail to reject the null hypothesis at $\alpha = 0.05$ and say with 95% confidence that the residuals are normally distributed. 
+
+Since the linear model of $Y \sim X_1$ doesn't seem to have any violations based on the plots and diagnostic tests, we need not perform any y-transformation like Box-Cox. However, the $R_{adj}^2$ is 59.86% which shows that even though a significant amount of variance in $Y$ is explained by $X_1$, adding more variables and creating an MLR model may explain more variance in $Y$. 
+
+```{r}
+anova(lm("Score ~ Logged.GDP.per.capita", data=myDF))
+```
+
+As such, we can conclude that because the $Y \sim X_1$ model has an $R_{adj}^2$ of 59.86%, $X_1$ is the most important predictor of Happiness Score. 
+
+## 2. Which predictors in a multiple regression model without interaction terms can help predict the mean response of Happiness Score? Run relevant diagnostics and perform cross validation.
+
+$H_O: \beta_1 = \beta_2 = \beta_3 = \beta_4 = \beta_5 = \beta_6 = \beta_7 = 0$
+$H_A: \beta_1, \beta_2, \beta_3, \beta_4, \beta_5, \beta_6, \beta_7 \neq 0$
+
+## MLR Model with No Interaction Terms:
+First, I will build a full model with no interaction terms to get a better idea of the variance in happiness score explained by the predictors in the data. 
+```{r}
+summary(lm("Score ~ Healthy.life.expectancy+Social.support+Logged.GDP.per.capita+Freedom.to.make.life.choices+Generosity+Perceptions.of.corruption+isWesternEurope",data=myDF))
+```
+Based on the above MLR model summary, we see that the $R_{adj}^2$ is 74.91% where all variables except generosity and Perceptions.of.corruption are significant. This model looks good as a significant amount of variance in Happiness is explained. Let's take a look at the diagnostics, and determine if there are any model violations.
+```{r}
+library(onewaytests)
+shapiro.test(lm("Score ~ Healthy.life.expectancy+Social.support+Logged.GDP.per.capita+Freedom.to.make.life.choices+Generosity+Perceptions.of.corruption+isWesternEurope",data=myDF)$residuals)
+plot(lm("Score ~ Healthy.life.expectancy+Social.support+Logged.GDP.per.capita+Freedom.to.make.life.choices+Generosity+Perceptions.of.corruption+isWesternEurope",data=myDF))
+df.new <- myDF
+df.new$group <- cut(lm("Score ~ Healthy.life.expectancy+Social.support+Logged.GDP.per.capita+Freedom.to.make.life.choices+Generosity+Perceptions.of.corruption+isWesternEurope",data=myDF)$fitted.values, 5)
+df.new$residual <- lm("Score ~ Healthy.life.expectancy+Social.support+Logged.GDP.per.capita+Freedom.to.make.life.choices+Generosity+Perceptions.of.corruption+isWesternEurope",data=myDF)$residuals
+bf.test(residual ~ group, df.new)
+```
+Based on the result of the Brown-Forsythe Test, where we reject the null hypothesis at $\alpha = 0.05$ and say with 95% confidence that the residuals don't have a constant variance. However, we fail to reject the null hypothesis of the Shapiro-Wilk Test at $\alpha = 0.05$ and say with 95% confidence that the residuals are normally distributed. 
+Since the diagnostics for the full model failed, we should take a look at best subset algorithm to get a better MLR model using criterions such as $SSE_p, AIC, PRESS_p, SBC, C_p, \& R_{adj}^2$.
+
+```{r}
+library(ALSM)
+BestSub(myDF[,4:10], myDF$Score, num=1)
+```
+When running Best Subset Algorithm, looking at the predictors using Happiness Score as the response variable, we see the model with all variables except "Generosity" and "Perceptions.of.corruption" seems to have the best values for $C_p$, $AIC_p$, $SBC_p$, and $PRESS_p$ while the model with all variables except "Generosity" has the best values for $R_{adj}^2$. However, $SBC_p$ usually prefers more general models whereas $AIC_p$ and $C_p$ prefers more complex models and because all criterions chose the same model, it seems that $Y \sim X_1 + X_2 + X_3 + X_4 + X_7$ is the best model based on the output of the Best Subset Algorithm.
+
+I will run diagnostics on the following model selected by Best Subset to determine if there are any MLR assumptions that are violated. 
+```{r}
+MLR_no_interaction = lm("Score ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope", data= myDF)
+summary(MLR_no_interaction)
+```
+### AV Plots
+```{r}
+library(car)
+avPlots(MLR_no_interaction)
+```
+These AV plots indicate that a linear term of each of the predictors would be a helpful addition in the regression model. 
+
+### Multicollinearity among Predictors:
+```{r}
+library(fmsb)
+VIF(lm(Logged.GDP.per.capita ~ Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope, myDF))
+VIF(lm(Social.support ~ Logged.GDP.per.capita + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope, myDF))
+VIF(lm(Healthy.life.expectancy ~ Logged.GDP.per.capita +  Social.support + Freedom.to.make.life.choices + isWesternEurope, myDF))
+VIF(lm(Freedom.to.make.life.choices ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + isWesternEurope, myDF))
+VIF(lm(isWesternEurope ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices, myDF))
+```
+We can see that all of the VIF values for the model are greater than one. The largest VIF value is 4.473579 Since the maximum VIF for the model is less than 10, we can conclude that there is not excessive multicollinearity between the predictors used in the model.
+
+### Influential Point Analysis
+```{r}
+influencePlot(MLR_no_interaction, main = "Influence Plot for 'MLR_no_interaction,'")
+qf(0.2, 5, nrow(myDF)-5)
+```
+
+### Identifying Y outliers
+```{r}
+ti <- rstudent(MLR_no_interaction)
+ti_test_stat <- qt(1 - 0.05/(2*nrow(myDF)), nrow(myDF) - 6 - 1)
+ti[abs(ti) > ti_test_stat]
+```
+None of the observations are Y outliers based on the studentized-deleted residuals. 
+
+### Identifying X outliers
+```{r}
+hii_bar <- mean(lm.influence(MLR_no_interaction)$hat, na.rm = TRUE)
+lm.influence(MLR_no_interaction)$hat[lm.influence(MLR_no_interaction)$hat > 2*hii_bar]
+```
+Based on the hat matrix values, the above points are X outliers based on the hat matrix leverage values. 
+
+#### Identifying Influential Points
+```{r}
+nrow(myDF)/6 > 10
+```
+Since $\frac{n}{p} > 10$, this dataset would be considered large. 
+
+##### DFFITS: Influence on a single fitted value
+```{r}
+dffits(MLR_no_interaction)[abs(dffits(MLR_no_interaction)) > 2*sqrt(6/nrow(myDF))]
+```
+As such, the above points have a heavy influence on the fitted values of the regression function.
+
+##### Cook's Distance: Influence on all fitted values
+```{r}
+cooks_test_f_values <- pf(cooks.distance(MLR_no_interaction), 6, nrow(myDF)-6)
+length(cooks_test_f_values[cooks_test_f_values < 0.2]) 
+length(cooks_test_f_values[cooks_test_f_values > 0.5])
+nrow(myDF)
+```
+As such, since all fitted values have a value from $F(p,n-p)$ that is less than the 20th percentile, all the points in the data have very little influence on the fitted value. 
+
+##### DFBETAS: Influence on the Regression Coefficients
+```{r}
+length(dfbetas(MLR_no_interaction)[abs(dfbetas(MLR_no_interaction)) > 2])
+```
+Based on the DFBETAS, there are no points that are heavily influential on the regression coefficients. Through the influential point analysis, I didn't want to remove any influential points as it is bad practice to remove points if they result in a bad fitting model. As such, I didn't remove any observations from the data.
+
+#### Residual Assumptions: Checking if residuals are normally distributed and have constant variance
+```{r}
+par(mfrow = c(2, 2))
+plot(MLR_no_interaction)
+```
+
+```{r}
+shapiro.test(MLR_no_interaction$residuals)
+
+df.new <- myDF
+df.new$group <- cut(MLR_no_interaction$fitted.values, 4)
+df.new$residual <- MLR_no_interaction$residuals
+bf.test(residual ~ group, df.new)
+```
+For the $Y \sim X_1 + X_2 + X_3 + X_4 + X_7$ model, the Shapiro-Wilk Test gives a p-value of $0.07969$ which is greater than $\alpha = 0.05$ so we fail to reject the null hypothesis of the Shapiro-Wilk Test and say with 95% confidence that the model has residuals which follow the normal distribution. Also, the Brown-Forsythe Test gives a p-value of $0.1454631$ which is greater than $\alpha = 0.05$ so we fail to reject the null hypothesis of the Brown-Forsythe Test and say that residuals have constant variances at the 95% confidence level. 
+
+```{r}
+anova(MLR_no_interaction)
+f_stat = (113.054 + 12.198 + 4.561 + 8.571 + 3.944)/0.311
+f_stat
+f_stat > qf(0.95, 6-1, nrow(myDF)-6)
+```
+As such, since the model doesn't have any violations, we can say that $Y \sim X_1 + X_2 + X_3 + X_4 + X_7$ is the final model because it explains a large portion of the variance in $Y$ with an $R_{adj}^2=74.86$%. However, a model with interaction terms may explain more variance so I am going to research further to see if a model with interaction terms is better at explaining the variance in Y.
+
+```{r}
+myDF$isWesternEurope_gdp = myDF$isWesternEurope * myDF$Logged.GDP.per.capita
+myDF$isWesternEurope_social = myDF$isWesternEurope * myDF$Social.support
+myDF$isWesternEurope_life_expectancy = myDF$isWesternEurope * myDF$Healthy.life.expectancy
+myDF$isWesternEurope_freedom = myDF$isWesternEurope * myDF$Freedom.to.make.life.choices
+
+library(ALSM)
+BestSub(myDF[,c(4:10,13:16)], myDF$Score, num=1)
+```
+When running Best Subset Algorithm for a model with interaction terms where we look at the predictors using Happiness Score as the response variable, we see $Y \sim X_1 + X_2 + X_3 + X_4 + X_{27} + X_{37}$ seems to have the best values for $C_p$, $AIC_p$, $R_{adj}^2$, and $PRESS_p$ while a less complex model has a lower value of $SBC_p$. However, since $SBC_p$ usually prefers more general models whereas $AIC_p$ & $C_p$ prefers more complex models and since the other criterions chose the same model as $AIC_p$ & $C_p$, it seems that is the best model by the Best Subset Algorithm.
+
+## MLR Model with Interaction terms
+$H_O: \beta_1 = \beta_2 = \beta_3 = \beta_4 = \beta_5 = \beta_6 = \beta_7 = \beta_{17} = \beta_{27} = \beta_{37} = \beta_{47} = 0$
+$H_A:$ at least one of $ \beta_1, \beta_2, \beta_3, \beta_4, \beta_5, \beta_6, \beta_7, \beta_{17}, \beta_{27}, \beta_{37}, \beta_{47} \neq 0$
+I will run diagnostics on the following model selected by Best Subset to determine if there are any MLR assumptions that are violated. 
+```{r}
+MLR_interaction = lm("Score ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope_social + isWesternEurope_life_expectancy", data= myDF)
+summary(MLR_interaction)
+```
+### AV Plots
+```{r}
+library(car)
+avPlots(MLR_interaction)
+```
+These AV plots indicate that a linear term of each of the predictors would be a helpful addition to the regression model including the interaction terms. 
+
+### Multicollinearity among Predictors:
+```{r}
+library(fmsb)
+VIF(lm(Logged.GDP.per.capita ~ Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope_social + isWesternEurope_life_expectancy, myDF))
+VIF(lm(Social.support ~ Logged.GDP.per.capita + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope_social + isWesternEurope_life_expectancy, myDF))
+VIF(lm(Healthy.life.expectancy ~ Logged.GDP.per.capita + Social.support + Freedom.to.make.life.choices + isWesternEurope_social + isWesternEurope_life_expectancy, myDF))
+VIF(lm(Freedom.to.make.life.choices ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + isWesternEurope_social + isWesternEurope_life_expectancy, myDF))
+VIF(lm(isWesternEurope_social ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope_life_expectancy, myDF))
+VIF(lm(isWesternEurope_life_expectancy ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope_social, myDF))
+```
+We can see that the VIF values for the interaction terms in the model are greater than 10 which indicates large multicollinearity from these terms. As such, we should remove them from the model. However, removing these terms from the model will give us a regular MLR model with no interaction terms. As such, I will use the previous model found from Best Subset that was known to have satisfied all diagnostics without violation. Thus, my final model will be the MLR model with no interaction terms. 
+
+I will validate that model using k-fold cross validation below. 
+```{r}
+library(leaps)
+library(caret)
+set.seed(123)
+train.control = trainControl(method = "cv", number = 10)
+valid.model1 = train(Score ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope, data = myDF, method = "leapBackward", tuneGrid = data.frame(nvmax = 5), trControl = train.control)
+valid.model1$results
+
+valid.model2 = train(Score ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope, data = myDF, method = "leapBackward", tuneGrid = data.frame(nvmax = 6), trControl = train.control)
+valid.model2$results
+
+valid.model3 = train(Score ~ Logged.GDP.per.capita + Social.support + Healthy.life.expectancy + Freedom.to.make.life.choices + isWesternEurope, data = myDF, method = "leapBackward", tuneGrid = data.frame(nvmax = 7), trControl = train.control)
+valid.model3$results
+```
+
+## References
+![Description of all variables](/Users/manoj9980/Downloads/BIB.png)
